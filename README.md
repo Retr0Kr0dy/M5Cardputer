@@ -2,7 +2,7 @@ Fork edit : ported lib for esp-idf getting rid of arduino.h so no need for ardui
 
 ### Usage :
 
-Go to your porjects `main` folder, slap the lib here :
+Go to your porjects `components` folder, slap the lib here :
 
 ```sh
 cd main
