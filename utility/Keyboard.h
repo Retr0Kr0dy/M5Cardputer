@@ -9,11 +9,11 @@
  *
  */
 #pragma once
-
 #include <iostream>
 #include <vector>
-#include <cstdint>  // For fixed-width integer types
-#include "Keyboard_def.h"  // Ensure 'Keyboard_def.h' is compatible with ESP-IDF
+#include <stdint.h> // For uint8_t
+#include <driver/gpio.h>
+#include "Keyboard_def.h" // Assuming this is a valid header relevant to your project
 
 struct Chart_t {
     uint8_t value;
@@ -26,89 +26,34 @@ struct Point2D_t {
     int y;
 };
 
-constexpr std::vector<int> output_list = {8, 9, 11};
-constexpr std::vector<int> input_list  = {13, 15, 3, 4, 5, 6, 7};
+// Use an array instead of const std::vector for pin lists
+const int output_list[] = {8, 9, 11};
+const int input_list[]  = {13, 15, 3, 4, 5, 6, 7};
 
-constexpr Chart_t X_map_chart[7] = {
-    {1, 0, 1}, 
-    {2, 2, 3},  
-    {4, 4, 5},
-    {8, 6, 7},   
-    {16, 8, 9}, 
-    {32, 10, 11},
-    {64, 12, 13}
-};
+const Chart_t X_map_chart[7] = {{1, 0, 1},   {2, 2, 3},  {4, 4, 5},
+                                  {8, 6, 7},   {16, 8, 9}, {32, 10, 11},
+                                  {64, 12, 13}};
 
 struct KeyValue_t {
     const char value_first;
     const char value_second;
 };
 
-constexpr KeyValue_t _key_value_map[4][14] = {
-    {
-        {'`', '~'},
-        {'1', '!'},
-        {'2', '@'},
-        {'3', '#'},
-        {'4', '$'},
-        {'5', '%'},
-        {'6', '^'},
-        {'7', '&'},
-        {'8', '*'},
-        {'9', '('},
-        {'0', ')'},
-        {'-', '_'},
-        {'=', '+'},
-        {KEY_BACKSPACE, KEY_BACKSPACE}
-    },
-    {
-        {KEY_TAB, KEY_TAB},
-        {'q', 'Q'},
-        {'w', 'W'},
-        {'e', 'E'},
-        {'r', 'R'},
-        {'t', 'T'},
-        {'y', 'Y'},
-        {'u', 'U'},
-        {'i', 'I'},
-        {'o', 'O'},
-        {'p', 'P'},
-        {'[', '{'},
-        {']', '}'},
-        {'\\', '|'}
-    },
-    {
-        {KEY_FN, KEY_FN},
-        {KEY_LEFT_SHIFT, KEY_LEFT_SHIFT},
-        {'a', 'A'},
-        {'s', 'S'},
-        {'d', 'D'},
-        {'f', 'F'},
-        {'g', 'G'},
-        {'h', 'H'},
-        {'j', 'J'},
-        {'k', 'K'},
-        {'l', 'L'},
-        {';', ':'},
-        {'\'', '\"'},
-        {KEY_ENTER, KEY_ENTER}
-    },
-    {
-        {KEY_LEFT_CTRL, KEY_LEFT_CTRL},
-        {KEY_OPT, KEY_OPT},
-        {KEY_LEFT_ALT, KEY_LEFT_ALT},
-        {'z', 'Z'},
-        {'x', 'X'},
-        {'c', 'C'},
-        {'v', 'V'},
-        {'b', 'B'},
-        {'n', 'N'},
-        {'m', 'M'},
-        {',', '<'},
-        {'.', '>'},
-        {'/', '?'},
-        {' ', ' '}
-    }
+const KeyValue_t _key_value_map[4][14] = {
+    {{'`', '~'}, {'1', '!'}, {'2', '@'}, {'3', '#'}, {'4', '$'},
+     {'5', '%'}, {'6', '^'}, {'7', '&'}, {'8', '*'}, {'9', '('},
+     {'0', ')'}, {'-', '_'}, {'=', '+'}, {KEY_BACKSPACE, KEY_BACKSPACE}},
+    {{KEY_TAB, KEY_TAB}, {'q', 'Q'}, {'w', 'W'}, {'e', 'E'}, {'r', 'R'},
+     {'t', 'T'}, {'y', 'Y'}, {'u', 'U'}, {'i', 'I'}, {'o', 'O'},
+     {'p', 'P'}, {'[', '{'}, {']', '}'}, {'\\', '|'}},
+    {{KEY_FN, KEY_FN}, {KEY_LEFT_SHIFT, KEY_LEFT_SHIFT}, {'a', 'A'},
+     {'s', 'S'}, {'d', 'D'}, {'f', 'F'}, {'g', 'G'}, {'h', 'H'},
+     {'j', 'J'}, {'k', 'K'}, {'l', 'L'}, {';', ':'}, {'\'', '\"'},
+     {KEY_ENTER, KEY_ENTER}},
+    {{KEY_LEFT_CTRL, KEY_LEFT_CTRL}, {KEY_OPT, KEY_OPT}, {KEY_LEFT_ALT, KEY_LEFT_ALT},
+     {'z', 'Z'}, {'x', 'X'}, {'c', 'C'}, {'v', 'V'}, {'b', 'B'},
+     {'n', 'N'}, {'m', 'M'}, {',', '<'}, {'.', '>'}, {'/', '?'},
+     {' ', ' '}}
 };
 
 class Keyboard_Class {
@@ -148,18 +93,18 @@ public:
 
 private:
     std::vector<Point2D_t> _key_list_buffer;
-    std::vector<Point2D_t> _key_pos_print_keys;  // only text: e.g. A, B, C
-    std::vector<Point2D_t> _key_pos_hid_keys;    // print key + space, enter, del
-    std::vector<Point2D_t> _key_pos_modifier_keys;  // modifier key: e.g. shift, ctrl, alt
+    std::vector<Point2D_t> _key_pos_print_keys;   // only text: eg A,B,C
+    std::vector<Point2D_t> _key_pos_hid_keys;     // print key + space, enter, del
+    std::vector<Point2D_t> _key_pos_modifier_keys; // modifier key: eg shift, ctrl, alt
     KeysState _keys_state_buffer;
-    bool _is_caps_locked = false;
-    uint8_t _last_key_size = 0;
+    bool _is_caps_locked;
+    uint8_t _last_key_size;
 
-    void _set_output(const std::vector<int>& pinList, uint8_t output);
-    uint8_t _get_input(const std::vector<int>& pinList);
+    void _set_output(const int* pinList, uint8_t output);
+    uint8_t _get_input(const int* pinList);
 
 public:
-    Keyboard_Class() : _is_caps_locked(false) {}
+    Keyboard_Class() : _is_caps_locked(false) { }
 
     void begin();
     uint8_t getKey(Point2D_t keyCoor);
@@ -182,10 +127,9 @@ public:
         return _keys_state_buffer;
     }
 
-    inline bool capslocked() {
+    inline bool capslocked(void) {
         return _is_caps_locked;
     }
-
     inline void setCapsLocked(bool isLocked) {
         _is_caps_locked = isLocked;
     }

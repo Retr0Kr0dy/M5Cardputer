@@ -1,7 +1,7 @@
 /**
  * @file keyboard.cpp
  * @author Forairaaaaa
- * @brief Keyboard handling class for ESP32 using ESP-IDF.
+ * @brief
  * @version 0.1
  * @date 2023-09-22
  *
@@ -10,76 +10,94 @@
  */
 #include "Keyboard.h"
 #include <driver/gpio.h>
-#include <vector>
-#include <cstring>
+#include <esp_log.h>
 
-#define digitalWrite(pin, level) gpio_set_level(static_cast<gpio_num_t>(pin), level)
-#define digitalRead(pin)         gpio_get_level(static_cast<gpio_num_t>(pin))
+void Keyboard_Class::_set_output(const int* pinList, uint8_t output) {
+    output = output & 0B00000111;
 
-void Keyboard_Class::_set_output(const std::vector<int>& pinList, uint8_t output) {
-    output &= 0B00000111;  // Only the lowest 3 bits matter
-
-    for (int i = 0; i < 3; ++i) {
-        digitalWrite(pinList[i], (output >> i) & 0B00000001);
-    }
+    gpio_set_level(static_cast<gpio_num_t>(pinList[0]), (output & 0B00000001));
+    gpio_set_level(static_cast<gpio_num_t>(pinList[1]), (output & 0B00000010));
+    gpio_set_level(static_cast<gpio_num_t>(pinList[2]), (output & 0B00000100));
 }
 
-uint8_t Keyboard_Class::_get_input(const std::vector<int>& pinList) {
+uint8_t Keyboard_Class::_get_input(const int* pinList) {
     uint8_t buffer = 0x00;
+    uint8_t pin_value = 0x00;
 
-    for (int i = 0; i < 7; ++i) {
-        buffer |= (digitalRead(pinList[i]) == 0 ? (0x01 << i) : 0x00);
+    for (int i = 0; i < 7; i++) {
+        pin_value = (gpio_get_level(static_cast<gpio_num_t>(pinList[i])) == 1) ? 0x00 : 0x01;
+        pin_value = pin_value << i;
+        buffer = buffer | pin_value;
     }
 
     return buffer;
 }
 
 void Keyboard_Class::begin() {
-    // Set output pins
-    for (const auto& pin : output_list) {
-        gpio_reset_pin(static_cast<gpio_num_t>(pin));
-        gpio_set_direction(static_cast<gpio_num_t>(pin), GPIO_MODE_OUTPUT);
-        gpio_set_pull_mode(static_cast<gpio_num_t>(pin), GPIO_PULLUP_PULLDOWN);
-        digitalWrite(pin, 0);
+    for (auto i : output_list) {
+        gpio_reset_pin(static_cast<gpio_num_t>(i));
+        gpio_set_direction(static_cast<gpio_num_t>(i), GPIO_MODE_OUTPUT);
+        gpio_set_pull_mode(static_cast<gpio_num_t>(i), GPIO_PULLUP_PULLDOWN);
+        gpio_set_level(static_cast<gpio_num_t>(i), 0); // Set output to low initially
     }
 
-    // Set input pins
-    for (const auto& pin : input_list) {
-        gpio_reset_pin(static_cast<gpio_num_t>(pin));
-        gpio_set_direction(static_cast<gpio_num_t>(pin), GPIO_MODE_INPUT);
-        gpio_set_pull_mode(static_cast<gpio_num_t>(pin), GPIO_PULLUP_ONLY);
+    for (auto i : input_list) {
+        gpio_reset_pin(static_cast<gpio_num_t>(i));
+        gpio_set_direction(static_cast<gpio_num_t>(i), GPIO_MODE_INPUT);
+        gpio_set_pull_mode(static_cast<gpio_num_t>(i), GPIO_PULLUP_ONLY); // Assuming you want pull-up
     }
 
     _set_output(output_list, 0);
 }
 
 uint8_t Keyboard_Class::getKey(Point2D_t keyCoor) {
-    if (keyCoor.x < 0 || keyCoor.y < 0) {
+    uint8_t ret = 0;
+
+    if ((keyCoor.x < 0) || (keyCoor.y < 0)) {
         return 0;
     }
-
-    return _keys_state_buffer.ctrl || _keys_state_buffer.shift || _is_caps_locked
-           ? _key_value_map[keyCoor.y][keyCoor.x].value_second
-           : _key_value_map[keyCoor.y][keyCoor.x].value_first;
+    if (_keys_state_buffer.ctrl || _keys_state_buffer.shift || _is_caps_locked) {
+        ret = _key_value_map[keyCoor.y][keyCoor.x].value_second;
+    } else {
+        ret = _key_value_map[keyCoor.y][keyCoor.x].value_first;
+    }
+    return ret;
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 void Keyboard_Class::updateKeyList() {
     _key_list_buffer.clear();
     Point2D_t coor;
     uint8_t input_value = 0;
 
-    for (int i = 0; i < 8; ++i) {
+    for (int i = 0; i < 8; i++) {
         _set_output(output_list, i);
         input_value = _get_input(input_list);
-
+        
+        /* If key pressed */
         if (input_value) {
-            for (int j = 0; j < 7; ++j) {
+            /* Get X */
+            for (int j = 0; j < 7; j++) {
                 if (input_value & (0x01 << j)) {
                     coor.x = (i > 3) ? X_map_chart[j].x_1 : X_map_chart[j].x_2;
-                    coor.y = (i > 3) ? (i - 4) : i;
 
-                    // Keep the same as the picture
-                    coor.y = -coor.y + 3;
+                    /* Get Y */
+                    coor.y = (i > 3) ? (i - 4) : i;
+                    /* Keep the same as picture */
+                    coor.y = -coor.y;
+                    coor.y = coor.y + 3;
 
                     _key_list_buffer.push_back(coor);
                 }
@@ -89,20 +107,23 @@ void Keyboard_Class::updateKeyList() {
 }
 
 uint8_t Keyboard_Class::isPressed() {
-    return static_cast<uint8_t>(_key_list_buffer.size());
+    return _key_list_buffer.size();
 }
 
 bool Keyboard_Class::isChange() {
     if (_last_key_size != _key_list_buffer.size()) {
         _last_key_size = _key_list_buffer.size();
         return true;
+    } else {
+        return false;
     }
-    return false;
 }
 
 bool Keyboard_Class::isKeyPressed(char c) {
-    for (const auto& key : _key_list_buffer) {
-        if (getKey(key) == c) return true;
+    if (_key_list_buffer.size()) {
+        for (const auto& i : _key_list_buffer) {
+            if (getKey(i) == c) return true;
+        }
     }
     return false;
 }
@@ -113,48 +134,63 @@ void Keyboard_Class::updateKeysState() {
     _key_pos_hid_keys.clear();
     _key_pos_modifier_keys.clear();
 
-    for (const auto& i : _key_list_buffer) {
-        const auto keyValue = getKeyValue(i).value_first;
+    // Get special keys
+    for (auto& i : _key_list_buffer) {
+        // modifier keys
+        if (getKeyValue(i).value_first == KEY_FN) {
+            _keys_state_buffer.fn = true;
+            continue;
+        }
+        if (getKeyValue(i).value_first == KEY_OPT) {
+            _keys_state_buffer.opt = true;
+            continue;
+        }
 
-        // Modifier keys
-        if (keyValue == KEY_FN) {
-            _keys_state_buffer.fn = true; continue;
-        }
-        if (keyValue == KEY_OPT) {
-            _keys_state_buffer.opt = true; continue;
-        }
-        if (keyValue == KEY_LEFT_CTRL) {
+        if (getKeyValue(i).value_first == KEY_LEFT_CTRL) {
             _keys_state_buffer.ctrl = true;
-            _key_pos_modifier_keys.push_back(i); continue;
+            _key_pos_modifier_keys.push_back(i);
+            continue;
         }
-        if (keyValue == KEY_LEFT_SHIFT) {
+
+        if (getKeyValue(i).value_first == KEY_LEFT_SHIFT) {
             _keys_state_buffer.shift = true;
-            _key_pos_modifier_keys.push_back(i); continue;
+            _key_pos_modifier_keys.push_back(i);
+            continue;
         }
-        if (keyValue == KEY_LEFT_ALT) {
+
+        if (getKeyValue(i).value_first == KEY_LEFT_ALT) {
             _keys_state_buffer.alt = true;
-            _key_pos_modifier_keys.push_back(i); continue;
+            _key_pos_modifier_keys.push_back(i);
+            continue;
         }
 
-        // Function keys
-        if (keyValue == KEY_TAB) {
-            _keys_state_buffer.tab = true; _key_pos_hid_keys.push_back(i); continue;
-        }
-        if (keyValue == KEY_BACKSPACE) {
-            _keys_state_buffer.del = true; _key_pos_hid_keys.push_back(i); continue;
-        }
-        if (keyValue == KEY_ENTER) {
-            _keys_state_buffer.enter = true; _key_pos_hid_keys.push_back(i); continue;
-        }
-        if (keyValue == ' ') {
-            _keys_state_buffer.space = true; 
+        // function keys
+        if (getKeyValue(i).value_first == KEY_TAB) {
+            _keys_state_buffer.tab = true;
+            _key_pos_hid_keys.push_back(i);
+            continue;
         }
 
+        if (getKeyValue(i).value_first == KEY_BACKSPACE) {
+            _keys_state_buffer.del = true;
+            _key_pos_hid_keys.push_back(i);
+            continue;
+        }
+
+        if (getKeyValue(i).value_first == KEY_ENTER) {
+            _keys_state_buffer.enter = true;
+            _key_pos_hid_keys.push_back(i);
+            continue;
+        }
+
+        if (getKeyValue(i).value_first == ' ') {
+            _keys_state_buffer.space = true;
+        }
         _key_pos_hid_keys.push_back(i);
         _key_pos_print_keys.push_back(i);
     }
 
-    for (const auto& i : _key_pos_modifier_keys) {
+    for (auto& i : _key_pos_modifier_keys) {
         uint8_t key = getKeyValue(i).value_first;
         _keys_state_buffer.modifier_keys.push_back(key);
     }
@@ -163,7 +199,7 @@ void Keyboard_Class::updateKeysState() {
         _keys_state_buffer.modifiers |= (1 << (k - 0x80));
     }
 
-    for (const auto& i : _key_pos_hid_keys) {
+    for (auto& i : _key_pos_hid_keys) {
         uint8_t k = getKeyValue(i).value_first;
         if (k == KEY_TAB || k == KEY_BACKSPACE || k == KEY_ENTER) {
             _keys_state_buffer.hid_keys.push_back(k);
@@ -175,8 +211,8 @@ void Keyboard_Class::updateKeysState() {
         }
     }
 
-    for (const auto& i : _key_pos_print_keys) {
-        uint8_t k = getKeyValue(i).value_first;
+    // Handle remaining keys
+    for (auto& i : _key_pos_print_keys) {
         if (_keys_state_buffer.ctrl || _keys_state_buffer.shift || _is_caps_locked) {
             _keys_state_buffer.word.push_back(getKeyValue(i).value_second);
         } else {
